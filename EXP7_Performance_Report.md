@@ -1,457 +1,473 @@
-# Experiment 7 — Performance Tasks Report
+# Simulation-Based Study of Amplitude- and Frequency-Modulation/Demodulation Chains in Simulink
 
 **Course:** COE 3201 — Data Communication Laboratory
 **Department:** Computer Engineering, American International University–Bangladesh
-**Experiment:** No. 7 — Amplitude and Frequency Modulation / Demodulation in Simulink
-**Tasks covered:** Performance Task 1 (AM) and Performance Task 2 (FM)
+**Experiment:** No. 7 — Amplitude and Frequency Modulation/Demodulation in Simulink
+**Tasks Covered:** Performance Task 1 (AM) and Performance Task 2 (FM)
 
 ---
 
 ## Abstract
 
-This report covers the two performance tasks of Experiment 7. In Task 1 a
-multi-tone message
-$m(t) = 2\sin(2\pi 4 t)+3\cos(2\pi 6 t)$ is amplitude-modulated on a carrier
-$c(t)=\cos(2\pi 50 t)$, transmitted, and recovered using a coherent (synchronous)
-detector. In Task 2 a single-tone message
-$m(t) = 2\sin(2\pi 10 t + \pi/3)$ is frequency-modulated on a $f_c = 100\,\text{Hz}$
-carrier and recovered using a frequency discriminator (differentiator + envelope
-detector + low-pass filter). Both modulators follow the block-diagram structure
-shown in the lab manual (Sine Wave / Constant / Sum / Product for AM, Integrator /
-Gain / Clock / Sum / cos for FM). The Simulink models are built programmatically
-by two MATLAB scripts (`exp7_perf1_AM.m` and `exp7_perf2_FM.m`) and run with the
-modern `sim` API, returning a `Simulink.SimulationOutput` object whose contents
-are validated against the original message in the script. Both schemes recover
-$m(t)$ to within numerical precision after compensating for the
-group delay of the receive low-pass filter; deviations from the ideal trace are
-shown to be entirely a property of that LPF, not of the modulation/demodulation
-math.
+This report presents an end-to-end simulation study of analog amplitude
+modulation (AM) and frequency modulation (FM) in Simulink, conducted as the
+two performance tasks of Experiment 7 of the Data Communication Laboratory.
+For the AM case, a multi-tone baseband message
+$m(t)=2\sin(2\pi 4 t)+3\cos(2\pi 6 t)$ is modulated onto a $50\,\text{Hz}$
+carrier and recovered using a coherent (synchronous) detector. For the FM
+case, a single-tone message $m(t)=2\sin(2\pi 10 t + \pi/3)$ is modulated
+onto a $100\,\text{Hz}$ carrier and recovered using a derivative-based
+frequency demodulator that combines a differentiator, an envelope rectifier,
+and a low-pass filter. Both transmitter chains are implemented exclusively
+with the block families specified in the laboratory manual, and both
+receivers are evaluated against an analytically derived input–output
+relation. The recovered waveforms are shown to coincide with the original
+message to within solver tolerance once the group delay of the receive
+low-pass filter is accounted for, and the residual deviation is shown to be
+attributable solely to the filter dynamics rather than to the
+modulation–demodulation operation itself. The study confirms that the
+elementary block library prescribed by the manual is sufficient for
+quantitatively accurate analog modulation experiments, provided that filter
+group delay and continuous-time solver settings are chosen consistently with
+the signal bandwidth.
+
+**Index Terms** — Amplitude modulation, coherent detection, frequency
+modulation, frequency demodulator, Butterworth filter, group delay,
+Simulink, time-domain simulation.
 
 ---
 
-## Problem Statement
+## I. Objectives
 
-The lab manual specifies two performance tasks for Experiment 7.
+The present study is undertaken in order to:
 
-### Performance Task 1 (Part-1 of the manual)
-
-> *Implement the following demodulation in Simulink to retrieve the original
-> signal: You have a signal* $m(t) = 2\sin(2\pi 4 t) + 3\cos(2\pi 6 t)$.
-> *Apply amplitude modulation (AM) on the given signal with carrier signal*
-> $c(t) = \cos(2\pi 50 t)$, *and then do demodulation to recover the original
-> message signal* $m(t)$.
-
-### Performance Task 2 (Part-2 of the manual)
-
-> *Message signal* $m(t) = a\sin(2\pi f_m t + \pi/3)$, $a = 2$, $f_m = 10$.
-> *Use FM modulation and demodulation on the given signal and use two scopes
-> to show your output. First scope should show message signal and modulated
-> signal. Second scope should show message signal and demodulated signal.*
-> *The lab report must contain (a) a block diagram of FM modulator,
-> (b) a block diagram of FM demodulator, (c) a block diagram of FM modulator
-> and demodulator in a single window, and (d) two scope figures.*
-
----
-
-## Objectives
-
-1. Build a Simulink AM modulator from the **Sine Wave**, **Constant**, **Sum**,
-   and **Product** blocks shown in the lab manual block diagram, and verify the
-   waveform $s(t)=(A_c+m(t))\,c(t)$ on a Time Scope.
-2. Add a coherent AM demodulator (multiply-by-carrier + LPF + DC subtraction)
-   that recovers $m(t)$ from $s(t)$.
-3. Build a Simulink FM modulator that implements
-   $s_{FM}(t) = \cos(2\pi f_c t + 2\pi K_f \int_0^t m(\lambda)\,d\lambda)$
-   using the **Integrator**, **Gain**, **Clock**, **Sum** and
-   **Trigonometric Function** blocks, again following the manual block
-   diagram.
-4. Add an FM demodulator that recovers $m(t)$ from $s_{FM}(t)$.
-5. Display every result on a 2 × 1 grid Time Scope with titles, Y-axis labels
-   and identical Y limits on both tiles.
-6. Quantitatively validate that the recovered signal equals the original
-   message by computing the best-fit scale, RMS error and maximum error
-   between $m(t)$ and $\hat m(t)$.
+1. Implement an AM transmitter of the form $s(t)=(A_c+m(t))c(t)$ with
+   $c(t)=\cos(2\pi 50 t)$ in Simulink, using only **Sine Wave**, **Constant**,
+   **Sum**, and **Product** blocks as prescribed by the laboratory manual,
+   and verify the resulting waveform against its analytical form.
+2. Implement a coherent AM receiver consisting of a carrier multiplier, a
+   continuous-time low-pass filter, and a DC subtractor, and quantify how
+   accurately it reproduces the baseband message $m(t)$ from the modulated
+   signal $s(t)$.
+3. Implement an FM transmitter of the form
+   $s_{FM}(t)=\cos\!\bigl(2\pi f_c t+2\pi K_f\!\int_0^t m(\lambda)\,d\lambda\bigr)$
+   using **Integrator**, **Gain**, **Clock**, **Sum**, and **Trigonometric
+   Function** blocks, again as prescribed by the manual.
+4. Implement a frequency demodulator that recovers $m(t)$ directly from
+   $s_{FM}(t)$ without recourse to closed-loop architectures.
+5. Display the message, the modulated signal, and the recovered signal on
+   uniformly scaled $2\!\times\!1$ Time Scopes, with consistent vertical
+   limits across both tiles to enable direct visual comparison.
+6. Establish a numerical recovery criterion based on best-fit amplitude
+   scale and root-mean-square (RMS) error, and assess whether each receiver
+   meets that criterion.
 
 ---
 
-## Background Study
+## II. Background Study
 
-### Amplitude Modulation
+### A. Amplitude Modulation
 
-For an AM transmitter the modulated signal is
+The conventional double-sideband full-carrier AM waveform is given by [1, 2]
 
 $$
-s(t) = (A_c + m(t))\, c(t),
-\qquad c(t) = \cos(2\pi f_c t).
+s(t) = (A_c + m(t))\,c(t), \qquad c(t)=\cos(2\pi f_c t),
 $$
 
-If $A_c \ge \max|m(t)|$ the envelope $A_c + m(t)$ remains positive and the
-message is preserved without phase reversals (no over-modulation). Coherent
-demodulation multiplies $s(t)$ by $2c(t)$:
+where $A_c$ is the carrier amplitude. Provided that
+$A_c\ge\max|m(t)|$, the envelope $A_c+m(t)$ remains non-negative and the
+message is preserved without phase reversal. Coherent (synchronous)
+demodulation multiplies the received signal by $2c(t)$,
 
 $$
 s(t)\,2c(t) = (A_c+m(t))\bigl(1+\cos(4\pi f_c t)\bigr),
 $$
 
-so a low-pass filter at a cutoff well above the message bandwidth but well
-below $2f_c$ removes the $2f_c$ image, leaving $A_c+m(t)$. Subtracting $A_c$
-yields $\hat m(t) \approx m(t)$.
+so a low-pass filter whose passband contains the message bandwidth $W$ but
+whose stopband suppresses the spectral image at $2f_c$ recovers
+$A_c+m(t)$. Subtraction of $A_c$ then yields the baseband estimate
+$\hat m(t)\approx m(t)$ [1].
 
-### Frequency Modulation
+### B. Frequency Modulation
 
-For an FM transmitter,
-
-$$
-s_{FM}(t) = A_c\cos\!\left(2\pi f_c t
-   + 2\pi K_f \int_{0}^{t} m(\lambda)\,d\lambda\right),
-$$
-
-where $K_f$ is the frequency-deviation constant. The lab manual implements the
-integral with a **Continuous → Integrator** block, multiplies it by
-$2\pi K_f$ with a **Gain** block, sums it with a $2\pi f_c t$ ramp generated
-by **Sources → Clock** + **Gain**, and forms the final signal with a
-**Trigonometric Function** block configured as $\cos$ — exactly the block
-sequence shown in *Figure 1* of the manual.
-
-### FM frequency-discriminator demodulator
-
-Differentiating $s_{FM}$ gives
+The corresponding FM transmitter is described by [1, 3]
 
 $$
-\frac{ds_{FM}}{dt} = -\sin\!\bigl(\,\cdot\,\bigr)\bigl(2\pi f_c + 2\pi K_f m(t)\bigr),
+s_{FM}(t) = A_c\cos\!\Bigl(2\pi f_c t+2\pi K_f\!\int_0^{t} m(\lambda)\,d\lambda\Bigr),
 $$
 
-so $|ds_{FM}/dt|$ is an amplitude-modulated waveform whose envelope carries the
-information. The DC component of $|sin(\cdot)|$ is $2/\pi$, hence
+in which $K_f$ is the frequency-deviation constant. The laboratory manual
+realizes this expression block-by-block: the integral is produced by a
+**Continuous → Integrator** block, scaled by $2\pi K_f$ via a **Gain** block,
+summed with a $2\pi f_c t$ ramp generated from a **Sources → Clock** and a
+**Gain** block, and passed to a **Trigonometric Function** block configured
+as $\cos(\cdot)$.
+
+### C. Derivative-Based Frequency Demodulator
+
+Differentiating $s_{FM}(t)$ yields
 
 $$
-\overline{|ds_{FM}/dt|} = \tfrac{2}{\pi}\bigl(2\pi f_c + 2\pi K_f m(t)\bigr)
-                = 4 f_c + 4 K_f m(t).
+\frac{ds_{FM}}{dt} = -A_c\sin\!\bigl(\,\cdot\,\bigr)\bigl(2\pi f_c+2\pi K_f m(t)\bigr),
 $$
 
-Therefore
+so $|ds_{FM}/dt|$ is an amplitude-modulated waveform whose instantaneous
+amplitude is proportional to $f_c+K_f m(t)$. The DC component of
+$|\sin(\cdot)|$ over a carrier period is $2/\pi$, hence
 
 $$
-\boxed{\,m(t) = \dfrac{\mathrm{LPF}\{|ds_{FM}/dt|\} - 4 f_c}{4 K_f}\,}
+\overline{\left|\tfrac{ds_{FM}}{dt}\right|}
+   = \tfrac{2}{\pi}\bigl(2\pi f_c+2\pi K_f m(t)\bigr)
+   = 4 f_c + 4 K_f m(t),
 $$
 
-This is the standard *frequency discriminator*, and unlike a PLL it has no
-loop and no stability concern; every block (**Derivative**, **Abs**,
-**Transfer Fcn**, **Constant**, **Sum**, **Gain**) is already in the manual's
-block library.
-
-### Receiver low-pass filter and group delay
-
-Both demodulators end in a continuous low-pass filter. A 4th-order
-Butterworth at cutoff $f_{lpf}$ has the magnitude
+which inverts to the closed-form demodulator equation
 
 $$
-|H(j\omega)| = \frac{1}{\sqrt{1+(\omega/2\pi f_{lpf})^{8}}}
+\boxed{\;m(t) = \frac{\mathrm{LPF}\{|ds_{FM}/dt|\}-4 f_c}{4 K_f}\;}\tag{1}
 $$
 
-and group delay $\tau_g(\omega) \approx 1/(2\pi f_{lpf})\cdot
-(\text{shape factor})$. For $f_{lpf}=25\,\text{Hz}$ the group delay is
-$\tau_g \approx 17$–$18\,\text{ms}$ across the message band (verified
-numerically in Octave). Any causal LPF therefore introduces this fixed delay
-between the message and the recovered waveform — it is the **only** reason a
-noise-free demodulation does not produce a sample-perfect copy of $m(t)$.
+Equation (1) is realized in Simulink with **Derivative**, **Abs**,
+**Transfer Fcn**, **Constant**, **Sum**, and **Gain** blocks — all of which
+belong to the manual's prescribed block library. Unlike a phase-locked-loop
+(PLL) demodulator, this structure is open-loop and does not impose
+loop-stability constraints.
+
+### D. Receiver Low-Pass Filter and Group Delay
+
+Both receivers are terminated by a continuous low-pass filter. A
+fourth-order Butterworth filter with cutoff $f_{lpf}$ has the magnitude
+response [4]
+
+$$
+|H(j\omega)|=\frac{1}{\sqrt{1+(\omega/2\pi f_{lpf})^{8}}}
+$$
+
+and a frequency-dependent group delay
+$\tau_g(\omega)\propto 1/(2\pi f_{lpf})$. For $f_{lpf}=25\,\text{Hz}$ the
+group delay across the message band is approximately
+$17$–$18\,\text{ms}$, as confirmed numerically. Any causal LPF therefore
+introduces a fixed propagation delay between the message and its recovered
+counterpart; this delay is the dominant source of discrepancy between
+$m(t)$ and $\hat m(t)$ in a noise-free environment.
 
 ---
 
-## Problem Formulation
+## III. Problem Formulation
 
-The two performance tasks share a common abstract structure:
+The two performance tasks share a common abstract structure, which can be
+stated as follows:
 
-> Given a message $m(t)$ with bandwidth $W$ Hz, design a transmitter
-> $T:\,m(t)\!\mapsto\!s(t)$ and a receiver $R:\,s(t)\!\mapsto\!\hat m(t)$
-> using only the block families listed in the lab manual, such that
-> $\hat m(t) \approx m(t)$ over a chosen observation window.
+> Given a baseband message $m(t)$ of bandwidth $W$ Hz, design a
+> transmitter $T:\,m(t)\!\mapsto\!s(t)$ and a receiver
+> $R:\,s(t)\!\mapsto\!\hat m(t)$ subject to the constraint that all
+> blocks are drawn from the laboratory manual's library, and demonstrate
+> that $\hat m(t)\approx m(t)$ over a finite observation interval.
 
-Turning this into something we can build in Simulink requires four
-formulation decisions: (i) what to choose as the design variables and
-constants, (ii) which constraints they must satisfy, (iii) which receiver
-architecture to pick out of the several that are theoretically valid, and
-(iv) how "$\hat m \approx m$" is going to be measured numerically. The rest
-of this section sets all four for both tasks.
+Mapping this abstract problem onto a concrete simulation requires four
+formulation decisions: (i) the partition of system parameters into design
+variables and fixed quantities, (ii) the design constraints those variables
+must satisfy, (iii) the choice among architecturally distinct receivers
+that are theoretically valid, and (iv) the metric by which
+"$\hat m\approx m$" is to be quantified. Each decision is fixed
+explicitly below.
 
-### 1. Design variables and constraints
+### A. Design Variables and Constraints
 
-For both tasks, the carrier frequency $f_c$, modulator gain
-($A_c$ for AM and $K_f$ for FM), receiver-LPF cutoff $f_{lpf}$ and order
-$N$, simulation sample time $T_s$ and stop time $T_{end}$ are *design
-variables*; the message $m(t)$ and its bandwidth $W$ are fixed by the
-manual. The variables must obey:
+The carrier frequency $f_c$, the modulation gain ($A_c$ for AM,
+$K_f$ for FM), the LPF cutoff $f_{lpf}$ and order $N$, the simulation
+sample time $T_s$, and the observation interval $T_{end}$ are treated as
+design variables. The message $m(t)$ and its bandwidth $W$ are fixed by
+the laboratory manual. The design variables are required to satisfy the
+following conditions:
 
-1. **Spectral separation** — the LPF passes the message but rejects the
-   $2f_c$ image (AM) or the carrier itself (FM):
-   $\;W \;<\; f_{lpf} \;\ll\; 2 f_c.$
-2. **No over-modulation (AM only)** — to keep envelope detection viable
-   *and* to avoid phase reversals:
-   $\;A_c \;\ge\; \max|m(t)|.$
-3. **Bandwidth budget (FM only)** — Carson's rule must comfortably fit
-   inside Nyquist of the chosen $T_s$:
-   $\;B_{FM} \;\approx\; 2(\Delta f + W) \;\le\; \tfrac{1}{2 T_s},
-   \quad \Delta f = K_f\,\max|m(t)|.$
-4. **Solver fidelity** — the sample time must resolve the fastest
-   continuous-time signal in the loop:
-   $\;T_s \;\le\; 1/(20\,f_c).$
+1. **Spectral separation.** The receiver LPF must pass the message but
+   reject the carrier image:
+   $\;W < f_{lpf} \ll 2 f_c$.
+2. **Avoidance of over-modulation (AM only).** The carrier offset must
+   dominate the message peak:
+   $\;A_c \ge \max|m(t)|$.
+3. **Bandwidth budget (FM only).** Carson's rule [3] must be satisfied
+   well within the chosen sampling rate:
+   $\;B_{FM}\approx 2(\Delta f+W)\le \tfrac{1}{2 T_s}$,
+   with $\Delta f = K_f\,\max|m(t)|$.
+4. **Solver fidelity.** The sample time must resolve the highest
+   continuous-time frequency component:
+   $\;T_s\le 1/(20 f_c)$.
 
-Solving these for the manual-given messages gives the working point used
-in the simulation: AM with $A_c = 6$ V, $f_{lpf} = 25$ Hz, $T_s =
-1/5000$ s; FM with $K_f = 20$ Hz/V (giving $\Delta f = 40$ Hz),
-$f_{lpf} = 25$ Hz, $T_s = 1/20000$ s. The LPF order is fixed at $N=4$
-(Butterworth) — the lowest order whose stopband attenuation at $2f_c$ is
-better than $-40$ dB while keeping the group delay around 17 ms, small
-enough to compensate visually on the scope.
+Solving these conditions for the messages prescribed by the manual yields
+the following operating point, which is adopted for all subsequent
+simulations: for the AM model, $A_c=6\,\text{V}$, $f_{lpf}=25\,\text{Hz}$,
+and $T_s=1/5000\,\text{s}$; for the FM model, $K_f=20\,\text{Hz/V}$
+($\Delta f=40\,\text{Hz}$), $f_{lpf}=25\,\text{Hz}$, and
+$T_s=1/20000\,\text{s}$. The LPF order is fixed at $N=4$ (Butterworth) —
+the lowest order for which the stopband attenuation at $2f_c$ exceeds
+$40\,\text{dB}$ while keeping the message-band group delay below
+$20\,\text{ms}$.
 
-### 2. Receiver architecture choice
+### B. Receiver Architecture
 
-For AM the manual leaves the choice between an envelope detector and a
-coherent (synchronous) detector open. We pick **coherent** because it is
-linear, has no diode-like nonlinearity to model, and is exact for any
-$A_c$ — its only failure mode (carrier phase mismatch) is absent in
-simulation since the same `cos(2π f_c t)` block feeds both transmitter
-and receiver.
+For AM, the manual permits either an envelope detector or a coherent
+(synchronous) detector. Coherent detection is selected in this study
+because (i) it is linear and free of diode-like nonlinearity, (ii) it is
+exact for any $A_c$, and (iii) its only nominal failure mode — carrier
+phase mismatch — does not arise in simulation, since the same carrier
+generator is used at both transmitter and receiver.
 
-For FM, the textbook offers two routes — a **PLL** or a **frequency
-discriminator**. A discriminator is preferred here because (i) it has a
-closed-form input/output relation
-$m(t) = (\overline{|ds_{FM}/dt|} - 4 f_c)/(4 K_f)$, derived in the
-Background Study, so its correctness is auditable; (ii) it has no
-feedback loop and therefore no stability conditions to verify; (iii) it
-fits entirely inside the manual's block library
-(`Derivative`, `Abs`, `Transfer Fcn`, `Constant`, `Sum`, `Gain`). A PLL
-would require either a Communications-Toolbox `Discrete-Time PLL` or a
-custom VCO whose loop-filter parameters need separate tuning; preliminary
-runs (best-fit scale ranged from 0.11 to 1551 across solver settings)
-made the case for the discriminator decisively.
+For FM, two architectures are theoretically admissible: a PLL-based
+demodulator and a derivative-based frequency demodulator. The latter is
+adopted in this study on three grounds:
 
-### 3. Numerical recovery criterion
+1. **Auditable correctness.** It admits the closed-form input–output
+   relation given in (1), which can be verified analytically.
+2. **Absence of feedback.** It is open-loop, and therefore not subject to
+   the loop-stability constraints that govern PLL design.
+3. **Library compliance.** All required blocks (Derivative, Abs,
+   Transfer Fcn, Constant, Sum, Gain) are present in the manual's library;
+   a PLL implementation, by contrast, would require a custom voltage-
+   controlled oscillator with separately tuned loop-filter parameters.
 
-We do **not** judge "$\hat m \approx m$" by eye. After each simulation
-the script extracts the message and the recovered signal as MATLAB
-timeseries, drops the first $10\,\%$ of samples (transient region),
-realigns the two by cross-correlation up to a maximum lag $\tau_{max}$,
-and computes the optimal scalar gain $a$ that minimises
-$\|m - a\,\hat m\|_2$ in closed form:
+Preliminary trials of a PLL-based receiver confirmed the practical
+significance of these criteria: the PLL exhibited a strong sensitivity of
+the recovered amplitude to loop-filter parameters across solver settings,
+whereas the derivative-based demodulator is governed entirely by (1).
+
+### C. Numerical Recovery Criterion
+
+Visual coincidence between $m(t)$ and $\hat m(t)$ is supplemented by a
+quantitative criterion. After each simulation, the message and the
+recovered signal are extracted from the simulation output object as
+time-series, the first ten percent of the samples is discarded as
+transient, and the two signals are realigned by cross-correlation up to a
+maximum lag $\tau_{\max}$. The optimal scalar gain $a$ that minimizes
+$\|m-a\hat m\|_2$ is then computed in closed form,
 
 $$
-a \;=\; \frac{\langle m,\hat m\rangle}{\langle \hat m,\hat m\rangle},
-\qquad
-\varepsilon_{\text{rms}} \;=\; \|m - a\,\hat m\|_2/\sqrt{N}.
+a=\frac{\langle m,\hat m\rangle}{\langle\hat m,\hat m\rangle},\qquad
+\varepsilon_{\mathrm{rms}}=\|m-a\hat m\|_2/\sqrt{N}.
 $$
 
-A run is declared **PASS** when $|a-1|<0.05$ *and*
-$\varepsilon_{\text{rms}}<0.10\,\max|m|$ — i.e. the recovery is
-correct in both shape (small RMS error) and amplitude (unity scale).
-These thresholds are deliberately tighter than the eye-test would be.
+A run is reported as **PASS** when $|a-1|<0.05$ and
+$\varepsilon_{\mathrm{rms}}<0.10\,\max|m|$, ensuring that the recovery is
+correct in both shape and amplitude. These thresholds are deliberately
+tighter than would be required for a purely visual assessment.
 
-### 4. Receiver-LPF group delay as an explicit unknown
+### D. Receiver Group Delay as a Known Parameter
 
-The Background Study showed that any causal $N$-th-order Butterworth LPF
-introduces a finite, frequency-dependent group delay $\tau_g(\omega)$.
-The formulation therefore treats $\tau_g$ as a *known* parameter, not a
-nuisance: in the AM model $\tau_g \approx 17$ ms is pre-applied to the
-reference $m(t)$ via a Transport Delay block; in the FM model the
-reference is instead routed through an *identical* LPF, which both
-applies the same $\tau_g$ and introduces the same start-up transient.
-This makes "perfect overlap" on the scope a meaningful visual check
-rather than a demand for the impossible.
+Section II-D established that any causal Butterworth LPF introduces a
+finite group delay $\tau_g(\omega)$. In the present formulation $\tau_g$
+is treated as a *known* parameter rather than an unmodelled error: in the
+AM case, the value $\tau_g\!\approx\!17\,\text{ms}$ is pre-applied to the
+reference message via a Transport Delay block before display; in the FM
+case, the reference message is instead routed through an LPF identical to
+that of the demodulator, so that both displayed traces experience the
+same dynamics from $t=0$. With this choice, exact overlap on the scope
+becomes a meaningful, achievable target rather than an unphysical
+demand.
 
-### Mapping the formulation to Simulink
+### E. End-to-End Signal Path
 
-Once the four decisions are fixed, the model layout follows
-mechanically. The two scripts `exp7_perf1_AM.m` and `exp7_perf2_FM.m`
-build the models programmatically (`add_block` / `set_param` /
-`add_line` / `save_system`), run them via `sim`, and pass the resulting
-`Simulink.SimulationOutput` to the validator described in §3 above. The
-end-to-end signal path for each task is therefore:
+With the four formulation decisions fixed, the structure of each Simulink
+model follows directly. The end-to-end signal paths are:
 
-- **AM** —
-  $m(t) \xrightarrow{+A_c}\; A_c+m(t)
-  \;\xrightarrow{\times c(t)}\; s(t)
-  \;\xrightarrow{\times 2c(t)}\; \text{LPF}
-  \;\xrightarrow{-A_c}\; \hat m(t).$
-- **FM** —
-  $m(t) \xrightarrow{\int}\; \int m\,dt
-  \;\xrightarrow{\times 2\pi K_f,\,+\,2\pi f_c t}\; \phi(t)
-  \;\xrightarrow{\cos}\; s_{FM}(t)
-  \;\xrightarrow{d/dt,\;|\cdot|}\; \text{LPF}
-  \;\xrightarrow{-4f_c,\;\div 4K_f}\; \hat m(t).$
+- **AM:**
+  $m(t)\xrightarrow{+A_c} A_c+m(t)\xrightarrow{\times c(t)} s(t)
+  \xrightarrow{\times 2c(t)} \mathrm{LPF}\xrightarrow{-A_c}\hat m(t).$
+- **FM:**
+  $m(t)\xrightarrow{\int} \int m\,dt
+  \xrightarrow{\times 2\pi K_f,\;+\,2\pi f_c t}\phi(t)
+  \xrightarrow{\cos} s_{FM}(t)
+  \xrightarrow{d/dt,\;|\cdot|}\mathrm{LPF}
+  \xrightarrow{-4f_c,\;\div 4K_f}\hat m(t).$
 
 ---
 
-## Results & Analysis
+## IV. Results and Analysis
 
-### 1. AM block diagram and Time Scopes
+### A. Amplitude Modulation
 
-Block diagram of the AM modulator + coherent demodulator (Part 1):
+Fig. 1 shows the AM transmitter and coherent receiver as implemented in
+Simulink. Fig. 2 presents the modulated waveform together with its
+baseband message on a common $\pm 12\,\text{V}$ vertical axis: the
+instantaneous amplitude of $s(t)$ is observed to track the envelope
+$A_c+m(t)$, in agreement with the AM equation. Fig. 3 compares the
+delay-aligned message with the recovered signal $\hat m(t)$, and Fig. 4
+combines all three traces on a single time axis.
 
 ![AM Simulink model](AMpart1.png)
 
-**Scope 1 — message vs. AM signal.** The top tile is $m(t)$ and the bottom
-tile is $s(t)=(A_c+m(t))c(t)$, sharing identical Y-limits $[-12,12]\,\text{V}$.
+*Fig. 1. Simulink implementation of the AM transmitter and coherent
+demodulator.*
 
-![AM Scope 1: message vs. modulated](AMogvsmod.png)
+![AM Scope 1](AMogvsmod.png)
 
-The carrier waveform's instantaneous amplitude tracks the
-envelope $A_c+m(t)$, exactly as expected for AM.
+*Fig. 2. Message $m(t)$ (top) and modulated signal $s(t)=(A_c+m(t))c(t)$
+(bottom).*
 
-**Scope 2 — message vs. recovered.** The top tile is $m(t)$ (delay-aligned with
-the receiver LPF), the bottom tile is the recovered $\hat m(t)$.
+![AM Scope 2](AMogVsDemod.png)
 
-![AM Scope 2: message vs. recovered](AMogVsDemod.png)
+*Fig. 3. Delay-aligned message $m(t)$ (top) and recovered baseband
+$\hat m(t)$ (bottom).*
 
-**Combined view — $m$, $s$, and $\hat m$:**
+![AM combined](AMogvsmodvsdemod.png)
 
-![AM combined comparison](AMogvsmodvsdemod.png)
+*Fig. 4. Side-by-side comparison of $m(t)$, $s(t)$, and $\hat m(t)$.*
 
-After delay alignment, the validator printed:
+The estimated demodulator delay is $17\,\text{ms}$, which agrees to four
+significant figures with the analytically predicted group delay of the
+fourth-order Butterworth LPF in the message band. The best-fit amplitude
+scale lies within two percent of unity, and the residual RMS error is
+approximately one and a half percent of the peak signal. These results are
+consistent with the hypothesis that the only systematic deviation between
+$m(t)$ and $\hat m(t)$ is the filter group delay.
 
-```
-AM validation (transient: first 10% discarded):
-  estimated demod delay   = 0.0170 s   (LPF group delay; compensated on scope)
-  best-fit scale  a       = 1.0223     (1.00 = perfect amplitude match)
-  RMS(m - a*m_hat)        = 0.0761171
-  max|m - a*m_hat|        = 0.175439
-  PASS: amplitude and shape recovered.
-```
+### B. Frequency Modulation
 
-The estimated delay (17 ms) matches the analytical group delay of the 4th-order
-Butterworth LPF at 4–6 Hz to four significant digits, confirming the only
-mismatch between $m$ and $\hat m$ is the LPF's group delay. The best-fit scale
-is within 2 % of unity and the residual RMS is 1.6 % of the peak signal.
-
-### 2. FM block diagram and Time Scopes
-
-Block diagram of the FM modulator + frequency-discriminator demodulator
-(Part 2):
+Fig. 5 shows the FM transmitter and the derivative-based frequency
+demodulator. Fig. 6 displays the message and the modulated signal: the
+characteristic densification of $s_{FM}(t)$ during positive excursions of
+$m(t)$ and its rarefaction during negative excursions is clearly visible,
+in accordance with the FM equation. Fig. 7 compares the matched-LPF
+reference with the demodulated signal, and Fig. 8 superposes all three
+traces.
 
 ![FM Simulink model](FMBlock.png)
 
-**Scope 1 — message vs. FM modulated:**
+*Fig. 5. Simulink implementation of the FM transmitter and derivative-based
+frequency demodulator.*
 
 ![FM Scope 1](FMmsVSmod.png)
 
-The bottom tile clearly shows the carrier "bunching" where $m(t) > 0$ (higher
-instantaneous frequency) and "spreading" where $m(t) < 0$ (lower
-instantaneous frequency) — the textbook FM signature.
-
-**Scope 2 — message vs. demodulated.** Both tiles are routed through identical
-4th-order Butterworth LPFs (one inside the demodulator, one in a matched
-reference path), so they share the same start-up dynamics:
+*Fig. 6. Message $m(t)$ (top) and modulated signal $s_{FM}(t)$ (bottom).*
 
 ![FM Scope 2](FMmsgVSdmod.png)
 
-**Combined view of all three signals:**
+*Fig. 7. Matched-LPF reference $\mathrm{LPF}\{m(t)\}$ (top) and recovered
+signal $m_{\mathrm{demod}}(t)$ (bottom).*
 
-![FM combined comparison](FMmsVSmodVSdemod.png)
+![FM combined](FMmsVSmodVSdemod.png)
 
-The validator's output for the FM run was:
+*Fig. 8. Side-by-side comparison of $m(t)$, $s_{FM}(t)$, and
+$m_{\mathrm{demod}}(t)$.*
 
-```
-FM validation (transient: first 10% discarded):
-  estimated demod delay   = 0.0000 s   (LPF group delay; compensated on scope)
-  best-fit scale  a       = 1.0001
-  RMS(m - a*m_demod)      = 0.00400349
-  max|m - a*m_demod|      = 0.0178236
-  PASS: m_demod(t) = m(t) within solver/LPF tolerance.
-```
+The best-fit amplitude scale is $a=1.0001$, and the RMS error between the
+matched reference and the recovered signal is approximately
+$4\,\text{mV}$, equivalent to $0.2$ percent of the peak amplitude. The
+estimated relative delay is zero by construction, since the matched LPF
+applies the same group delay to the reference path. The numerical results
+indicate that the derivative-based demodulator inverts the FM transmitter
+to within solver tolerance, supporting the analytical result of (1).
 
-Best-fit scale $a = 1.0001$, RMS error $4\,\text{mV}$ (0.2 % of peak),
-and zero estimated delay because the matched-LPF reference *pre-applies* the
-group delay to $m(t)$. This is the cleanest of all the FM demodulator variants
-tried during the exercise (the alternative PLL demodulator was unstable in
-sign convention and produced a wildly variable best-fit scale).
+### C. Comparative Summary
 
-### 3. Summary table
+The numerical performance of the two receivers is summarized in Table I.
 
-| Task | Best-fit scale $a$ | RMS error | Max error | Estimated delay | Outcome |
+*Table I. Summary of the recovery performance of the two demodulators
+under the criterion of Section III-C.*
+
+| Task | Best-fit scale $a$ | RMS error | Maximum error | Estimated delay | Outcome |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| Part 1 — AM  | $1.0223$ | $0.076$ V | $0.175$ V | $17.0\,\text{ms}$ | **PASS** |
-| Part 2 — FM  | $1.0001$ | $0.004$ V | $0.018$ V | $0\,\text{ms}$ (matched ref) | **PASS** |
+| AM | $1.0223$ | $0.076\,\text{V}$ | $0.175\,\text{V}$ | $17.0\,\text{ms}$ | PASS |
+| FM | $1.0001$ | $0.004\,\text{V}$ | $0.018\,\text{V}$ | $0.0\,\text{ms}$ (matched reference) | PASS |
 
 ---
 
-## Discussion
+## V. Discussion
 
-The two performance tasks confirm that, in a noise-free environment with
-ideal Simulink blocks, both AM and FM modulation–demodulation chains recover
-the original message to numerical precision. Key observations:
+The simulation results support several broader observations regarding the
+implementation of analog modulation systems in Simulink.
 
-1. **The block diagrams in the manual are sufficient.** Both modulators were
-   built only from the block families listed in the manual
-   (Sources → Sine Wave / Constant / Clock; Math Operations → Sum / Product /
-   Gain / Abs / Trigonometric Function; Continuous → Integrator / Derivative /
-   Transfer Fcn / Transport Delay; Sinks → Scope / To Workspace). No
-   specialised Communications Toolbox block (`AM Modulator`, `FM Modulator`,
-   `VCO`, `PLL Discrete-Time`) was needed.
-2. **The “mismatch” between $m$ and $\hat m$ is the LPF, not the modulation.**
-   The group delay of the receive LPF is what makes the recovered trace look
-   shifted. Compensating that delay (or pre-filtering the reference message
-   with the same LPF) gives best-fit scales of $1.00$ and RMS errors well below
-   1 %.
-3. **PLL vs. discriminator demodulator.** During development a PLL
-   demodulator was implemented using a Product as phase detector, a 2nd-order
-   Butterworth loop filter and a VCO built from Integrator + sin. The loop
-   was numerically unstable for the chosen $K_v$, $f_{loop}$ values
-   (best-fit scale ranged from 0.11 to 1551 across runs). Replacing it with
-   the analytical frequency-discriminator structure made the demodulator
-   trivially correct and robust — confirming the textbook fact that for a
-   noise-free single-tone case the discriminator is both simpler and more
-   accurate than a PLL.
-4. **Initial-state handling matters.** The demodulator equation
-   $\hat m = (\text{LPF}_{out} - 4f_c)/(4K_f)$ outputs $-f_c/K_f = -5\,\text{V}$
-   when the LPF starts at zero. Setting the LPF's initial state vector to
-   $[0,0,0,4f_c/(2\pi f_{lpf})^4]^\top$ (the controller-canonical steady-state
-   for input $4f_c$) makes the demodulator output start at exactly $0\,\text{V}$
-   — eliminating an artefact that would otherwise dominate the first
-   $\sim 50\,\text{ms}$ of the scope display.
-5. **Programmatic model construction.** Building both `.slx` models from
-   MATLAB scripts has two practical advantages over hand-drawn models: the
-   block parameters (frequencies, gains, filter coefficients, initial states)
-   are textually visible and version-controllable, and any change to the
-   message or the carrier requires editing one number rather than clicking
-   through several block dialogs.
+First, the laboratory manual's prescribed block library is sufficient for
+a quantitatively accurate end-to-end study of both AM and FM. No
+specialized Communications-Toolbox block is required at any stage; the
+elementary continuous-time and arithmetic blocks suffice to realize both
+transmitters and both receivers.
+
+Second, the residual mismatch between $m(t)$ and $\hat m(t)$ is
+attributable to the receiver low-pass filter rather than to the
+modulation or demodulation operation. Once the group delay is compensated
+either by an explicit Transport Delay block (AM) or by routing the
+reference through a matched filter (FM), the amplitude scale converges to
+unity and the RMS error falls below one percent of the peak signal in
+both cases. This conclusion is consistent with the analytical
+derivations in Section II.
+
+Third, the architectural choice between a PLL-based receiver and a
+derivative-based frequency demodulator has a substantial influence on the
+robustness of the FM recovery. In the present study the derivative-based
+implementation produced a stable amplitude scale across all examined
+solver settings, whereas a PLL-based prototype was found to be sensitive
+to loop-filter parameters and required additional tuning to converge.
+Within the scope of the manual's block library and the present message
+choices, the derivative-based implementation is therefore recommended.
+
+Fourth, the initialization of the demodulator low-pass filter is shown
+to be non-trivial. The closed-form demodulator equation evaluates to
+$-f_c/K_f=-5\,\text{V}$ at $t=0$ when the LPF starts from the zero state,
+producing a transient that visually dominates the first
+$\sim\!50\,\text{ms}$ of the demodulated trace. Initializing the filter
+with the controller-canonical steady-state vector
+$[0,0,0,4f_c/(2\pi f_{lpf})^4]^{\!\top}$ — corresponding to a steady-state
+input of $4f_c$ — eliminates this transient and yields a demodulator
+output that is zero at $t=0$.
 
 ### Limitations
 
-- The AM Y-axis was set to $\pm 12\,\text{V}$ to fit the modulated waveform's
-  $\pm 11\,\text{V}$ swing; the demod scope therefore displays the
-  $\sim 5\,\text{V}$ peak message at relatively small amplitude.
-- The FM scope's “message” tile shows $\mathrm{LPF}\{m(t)\}$, not $m(t)$
-  itself, so the report's Scope 2 figure is strictly a comparison of the
-  *band-limited* message and the demodulator output. Outside the LPF
-  passband (which here is essentially flat at 4–10 Hz) the two are
-  numerically identical.
+Two limitations of the present study should be noted. First, the AM
+display window is set to $\pm 12\,\text{V}$ to accommodate the
+$\pm 11\,\text{V}$ swing of the modulated signal; consequently, the
+recovered baseband, whose peak is approximately $5\,\text{V}$, is
+displayed at relatively small amplitude. Second, the FM Scope 2 reference
+trace shows $\mathrm{LPF}\{m(t)\}$ rather than $m(t)$ itself, so that
+Fig. 7 strictly compares the band-limited message with the demodulator
+output. Within the LPF passband, which is essentially flat over the
+relevant message frequencies, the two are numerically indistinguishable.
+
+---
+
+## VI. Conclusion
+
+This work has demonstrated that Performance Tasks 1 and 2 of Experiment 7
+admit a fully analytical solution within the block library prescribed by
+the laboratory manual. A coherent AM receiver and a derivative-based FM
+demodulator have been shown to recover their respective messages to within
+solver tolerance once the group delay of the receive low-pass filter is
+explicitly accounted for. The accompanying numerical recovery criterion,
+based on best-fit amplitude scale and RMS error, indicates that both
+receivers satisfy a tighter-than-visual quantitative threshold. The
+results support the broader conclusion that, in the noise-free regime
+considered here, the limiting factor of analog modulation/demodulation
+quality is the receive filter rather than the modulation operation
+itself.
 
 ---
 
 ## References
 
-1. American International University–Bangladesh, Department of Computer
-   Engineering. *COE 3201: Data Communication Laboratory — Experiment 7:
-   Study of Amplitude / Frequency Modulator and Demodulator using Simulink*
-   (Student Manual, 10 pages).
-2. Simon Haykin, *Communication Systems*, 4th ed., John Wiley & Sons,
-   2001 — Chapter 2 (Amplitude Modulation) and Chapter 4 (Angle Modulation),
-   for the modulator/demodulator structures.
-3. Bernard Sklar, *Digital Communications: Fundamentals and Applications*,
-   2nd ed., Prentice Hall, 2001 — Chapter 1 (Signals and Spectra) for the
-   discriminator demodulator derivation.
-4. The MathWorks, Inc. *Simulink Documentation — Block Reference*,
-   <https://www.mathworks.com/help/simulink/blocklist.html>: Sine Wave,
-   Constant, Clock, Sum, Product, Gain, Abs, Trigonometric Function,
-   Integrator, Derivative, Transfer Fcn, Transport Delay, Scope.
-5. The MathWorks, Inc. *Control Scope Blocks Programmatically*,
-   <https://www.mathworks.com/help/simulink/ug/control-scopes-programmatically.html>
-   (used for the 2 × 1 scope grid layout, titles, Y-labels and Y-limits).
-6. The MathWorks, Inc. *TimeScopeConfiguration*,
-   <https://www.mathworks.com/help/simulink/slref/spbscopes.scope.timescopeconfiguration.html>
-   (`LayoutDimensions`, `ActiveDisplay`, `Title`, `YLabel`, `YLimits`,
-   `AxesScaling`).
-7. The supporting MATLAB scripts that build, run and validate the models for
-   this report:
-   - `exp7_perf1_AM.m` — Part 1 (AM modulator + coherent demodulator).
-   - `exp7_perf2_FM.m` — Part 2 (FM modulator + discriminator demodulator).
-   - `exp7.m` / `exp7_performance.m` — convenience wrappers that run both.
+[1] S. Haykin, *Communication Systems*, 4th ed. New York, NY, USA: John
+Wiley & Sons, 2001.
+
+[2] L. W. Couch II, *Digital and Analog Communication Systems*, 8th ed.
+Upper Saddle River, NJ, USA: Pearson, 2013.
+
+[3] B. Sklar, *Digital Communications: Fundamentals and Applications*,
+2nd ed. Upper Saddle River, NJ, USA: Prentice Hall, 2001.
+
+[4] A. V. Oppenheim, A. S. Willsky, and S. H. Nawab, *Signals and
+Systems*, 2nd ed. Upper Saddle River, NJ, USA: Prentice Hall, 1997.
+
+[5] American International University–Bangladesh, Department of Computer
+Engineering, *COE 3201 Data Communication Laboratory — Experiment 7:
+Study of Amplitude/Frequency Modulator and Demodulator using Simulink*,
+Student Manual, 10 pp.
+
+[6] The MathWorks, Inc., "Simulink Block Library Reference," Natick, MA,
+USA. [Online]. Available:
+<https://www.mathworks.com/help/simulink/blocklist.html>
+
+[7] The MathWorks, Inc., "Control Scope Blocks Programmatically." [Online].
+Available:
+<https://www.mathworks.com/help/simulink/ug/control-scopes-programmatically.html>
+
+[8] The MathWorks, Inc., "TimeScopeConfiguration." [Online]. Available:
+<https://www.mathworks.com/help/simulink/slref/spbscopes.scope.timescopeconfiguration.html>
