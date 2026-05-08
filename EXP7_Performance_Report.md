@@ -160,58 +160,124 @@ noise-free demodulation does not produce a sample-perfect copy of $m(t)$.
 
 ## Problem Formulation
 
-### Task 1 — AM modulator + coherent demodulator
+The two performance tasks share a common abstract structure:
 
-| Symbol     | Value                            | Block                                  |
-| :--------- | :------------------------------- | :------------------------------------- |
-| $m(t)$     | $2\sin(2\pi 4t)+3\cos(2\pi 6t)$  | two **Sine Wave** + **Sum**            |
-| $A_c$      | $6$ V (so $A_c\ge\max|m|\approx 5$) | **Constant**                          |
-| $c(t)$     | $\cos(2\pi 50 t)$                | **Sine Wave**, phase $\pi/2$           |
-| $s(t)$     | $(A_c+m(t))\,c(t)$               | **Product**                            |
-| Mixer      | $s(t)\cdot 2c(t)$                | **Gain** (×2) + **Product**            |
-| LPF        | 4th-order Butterworth, 25 Hz     | **Transfer Fcn**                       |
-| DC removal | subtract $A_c$                   | **Sum** ($+,-$)                        |
+> Given a message $m(t)$ with bandwidth $W$ Hz, design a transmitter
+> $T:\,m(t)\!\mapsto\!s(t)$ and a receiver $R:\,s(t)\!\mapsto\!\hat m(t)$
+> using only the block families listed in the lab manual, such that
+> $\hat m(t) \approx m(t)$ over a chosen observation window.
 
-The model is `EXP7_PT1_AM.slx`. Sample time
-$T_s = 1/5000\,\text{s}$, simulation stop time $2\,\text{s}$, fixed-step solver
-`ode45`.
+Turning this into something we can build in Simulink requires four
+formulation decisions: (i) what to choose as the design variables and
+constants, (ii) which constraints they must satisfy, (iii) which receiver
+architecture to pick out of the several that are theoretically valid, and
+(iv) how "$\hat m \approx m$" is going to be measured numerically. The rest
+of this section sets all four for both tasks.
 
-The block diagram exactly mirrors the manual's *Block Diagram* (page 2 of the
-manual): two **Sources → Sine Wave** for the message, a **Sources → Constant**
-for $A_c$, a **Math Operations → Sum** to form $A_c+m(t)$, a third
-**Sources → Sine Wave** for the carrier, and a **Math Operations → Product** as
-the modulator. The demodulator extends the same block families.
+### 1. Design variables and constraints
 
-### Task 2 — FM modulator + frequency-discriminator demodulator
+For both tasks, the carrier frequency $f_c$, modulator gain
+($A_c$ for AM and $K_f$ for FM), receiver-LPF cutoff $f_{lpf}$ and order
+$N$, simulation sample time $T_s$ and stop time $T_{end}$ are *design
+variables*; the message $m(t)$ and its bandwidth $W$ are fixed by the
+manual. The variables must obey:
 
-| Symbol     | Value                                                      | Block                                  |
-| :--------- | :--------------------------------------------------------- | :------------------------------------- |
-| $m(t)$     | $2\sin(2\pi 10 t + \pi/3)$                                 | **Sine Wave**                          |
-| Phase     | $\int m\,dt$ → ×$2\pi K_f$                                | **Integrator** + **Gain**              |
-| Carrier   | $2\pi f_c t$ from **Clock** + **Gain**                     | **Clock** + **Gain**                   |
-| Sum       | $\phi(t)= 2\pi f_c t + 2\pi K_f\!\int m\,dt$              | **Sum**                                |
-| $s_{FM}$  | $\cos(\phi(t))$                                            | **Trigonometric Function** ($\cos$)    |
-| Discrim.  | $|ds_{FM}/dt|$ → 4th-order Butterworth LPF (25 Hz)        | **Derivative**, **Abs**, **TF**        |
-| Decode    | $-4f_c$, $\div 4K_f$                                       | **Constant**, **Sum**, **Gain**        |
-| Reference | matched LPF on $m(t)$ for the demod scope                  | **Transfer Fcn** (zero IC)             |
+1. **Spectral separation** — the LPF passes the message but rejects the
+   $2f_c$ image (AM) or the carrier itself (FM):
+   $\;W \;<\; f_{lpf} \;\ll\; 2 f_c.$
+2. **No over-modulation (AM only)** — to keep envelope detection viable
+   *and* to avoid phase reversals:
+   $\;A_c \;\ge\; \max|m(t)|.$
+3. **Bandwidth budget (FM only)** — Carson's rule must comfortably fit
+   inside Nyquist of the chosen $T_s$:
+   $\;B_{FM} \;\approx\; 2(\Delta f + W) \;\le\; \tfrac{1}{2 T_s},
+   \quad \Delta f = K_f\,\max|m(t)|.$
+4. **Solver fidelity** — the sample time must resolve the fastest
+   continuous-time signal in the loop:
+   $\;T_s \;\le\; 1/(20\,f_c).$
 
-Parameters: $f_c=100\,\text{Hz}$, $K_f=20\,\text{Hz/V}$,
-$f_{lpf}=25\,\text{Hz}$, $T_s=1/20000\,\text{s}$, stop time $0.4\,\text{s}$,
-solver `ode45` with maximum step $5\times10^{-5}\,\text{s}$. The model is
-`EXP7_PT2_FM.slx`. The demodulator's LPF is initialised with state
-$\bigl[0,0,0,4 f_c/(2\pi f_{lpf})^4\bigr]^{\!\top}$ so that its output starts
-at $4 f_c$ and the demod output starts at exactly $0$ — eliminating the
-$-f_c/K_f = -5\,\text{V}$ start-up dip that would otherwise appear.
+Solving these for the manual-given messages gives the working point used
+in the simulation: AM with $A_c = 6$ V, $f_{lpf} = 25$ Hz, $T_s =
+1/5000$ s; FM with $K_f = 20$ Hz/V (giving $\Delta f = 40$ Hz),
+$f_{lpf} = 25$ Hz, $T_s = 1/20000$ s. The LPF order is fixed at $N=4$
+(Butterworth) — the lowest order whose stopband attenuation at $2f_c$ is
+better than $-40$ dB while keeping the group delay around 17 ms, small
+enough to compensate visually on the scope.
 
-### Implementation note
+### 2. Receiver architecture choice
 
-The Simulink models are not built by hand; they are constructed
-programmatically by the two scripts `exp7_perf1_AM.m` and `exp7_perf2_FM.m`,
-which use `add_block` / `set_param` / `add_line` / `save_system` and finally
-`sim`. The same scripts attach **To Workspace** sinks for $m(t)$ and the
-recovered signal, then read those signals from the returned
-`Simulink.SimulationOutput` object and run a cross-correlation-aligned
-validator that prints the best-fit scale, RMS error and maximum error.
+For AM the manual leaves the choice between an envelope detector and a
+coherent (synchronous) detector open. We pick **coherent** because it is
+linear, has no diode-like nonlinearity to model, and is exact for any
+$A_c$ — its only failure mode (carrier phase mismatch) is absent in
+simulation since the same `cos(2π f_c t)` block feeds both transmitter
+and receiver.
+
+For FM, the textbook offers two routes — a **PLL** or a **frequency
+discriminator**. A discriminator is preferred here because (i) it has a
+closed-form input/output relation
+$m(t) = (\overline{|ds_{FM}/dt|} - 4 f_c)/(4 K_f)$, derived in the
+Background Study, so its correctness is auditable; (ii) it has no
+feedback loop and therefore no stability conditions to verify; (iii) it
+fits entirely inside the manual's block library
+(`Derivative`, `Abs`, `Transfer Fcn`, `Constant`, `Sum`, `Gain`). A PLL
+would require either a Communications-Toolbox `Discrete-Time PLL` or a
+custom VCO whose loop-filter parameters need separate tuning; preliminary
+runs (best-fit scale ranged from 0.11 to 1551 across solver settings)
+made the case for the discriminator decisively.
+
+### 3. Numerical recovery criterion
+
+We do **not** judge "$\hat m \approx m$" by eye. After each simulation
+the script extracts the message and the recovered signal as MATLAB
+timeseries, drops the first $10\,\%$ of samples (transient region),
+realigns the two by cross-correlation up to a maximum lag $\tau_{max}$,
+and computes the optimal scalar gain $a$ that minimises
+$\|m - a\,\hat m\|_2$ in closed form:
+
+$$
+a \;=\; \frac{\langle m,\hat m\rangle}{\langle \hat m,\hat m\rangle},
+\qquad
+\varepsilon_{\text{rms}} \;=\; \|m - a\,\hat m\|_2/\sqrt{N}.
+$$
+
+A run is declared **PASS** when $|a-1|<0.05$ *and*
+$\varepsilon_{\text{rms}}<0.10\,\max|m|$ — i.e. the recovery is
+correct in both shape (small RMS error) and amplitude (unity scale).
+These thresholds are deliberately tighter than the eye-test would be.
+
+### 4. Receiver-LPF group delay as an explicit unknown
+
+The Background Study showed that any causal $N$-th-order Butterworth LPF
+introduces a finite, frequency-dependent group delay $\tau_g(\omega)$.
+The formulation therefore treats $\tau_g$ as a *known* parameter, not a
+nuisance: in the AM model $\tau_g \approx 17$ ms is pre-applied to the
+reference $m(t)$ via a Transport Delay block; in the FM model the
+reference is instead routed through an *identical* LPF, which both
+applies the same $\tau_g$ and introduces the same start-up transient.
+This makes "perfect overlap" on the scope a meaningful visual check
+rather than a demand for the impossible.
+
+### Mapping the formulation to Simulink
+
+Once the four decisions are fixed, the model layout follows
+mechanically. The two scripts `exp7_perf1_AM.m` and `exp7_perf2_FM.m`
+build the models programmatically (`add_block` / `set_param` /
+`add_line` / `save_system`), run them via `sim`, and pass the resulting
+`Simulink.SimulationOutput` to the validator described in §3 above. The
+end-to-end signal path for each task is therefore:
+
+- **AM** —
+  $m(t) \xrightarrow{+A_c}\; A_c+m(t)
+  \;\xrightarrow{\times c(t)}\; s(t)
+  \;\xrightarrow{\times 2c(t)}\; \text{LPF}
+  \;\xrightarrow{-A_c}\; \hat m(t).$
+- **FM** —
+  $m(t) \xrightarrow{\int}\; \int m\,dt
+  \;\xrightarrow{\times 2\pi K_f,\,+\,2\pi f_c t}\; \phi(t)
+  \;\xrightarrow{\cos}\; s_{FM}(t)
+  \;\xrightarrow{d/dt,\;|\cdot|}\; \text{LPF}
+  \;\xrightarrow{-4f_c,\;\div 4K_f}\; \hat m(t).$
 
 ---
 
