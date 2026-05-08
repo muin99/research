@@ -282,97 +282,7 @@ model follows directly. The end-to-end signal paths are:
 
 ---
 
-## IV. Results and Analysis
-
-### A. Amplitude Modulation
-
-Fig. 1 shows the AM transmitter and coherent receiver as implemented in
-Simulink. Fig. 2 presents the modulated waveform together with its
-baseband message on a common $\pm 12\,\text{V}$ vertical axis: the
-instantaneous amplitude of $s(t)$ is observed to track the envelope
-$A_c+m(t)$, in agreement with the AM equation. Fig. 3 compares the
-delay-aligned message with the recovered signal $\hat m(t)$, and Fig. 4
-combines all three traces on a single time axis.
-
-![AM Simulink model](AMpart1.png)
-
-*Fig. 1. Simulink implementation of the AM transmitter and coherent
-demodulator.*
-
-![AM Scope 1](AMogvsmod.png)
-
-*Fig. 2. Message $m(t)$ (top) and modulated signal $s(t)=(A_c+m(t))c(t)$
-(bottom).*
-
-![AM Scope 2](AMogVsDemod.png)
-
-*Fig. 3. Delay-aligned message $m(t)$ (top) and recovered baseband
-$\hat m(t)$ (bottom).*
-
-![AM combined](AMogvsmodvsdemod.png)
-
-*Fig. 4. Side-by-side comparison of $m(t)$, $s(t)$, and $\hat m(t)$.*
-
-The estimated demodulator delay is $17\,\text{ms}$, which agrees to four
-significant figures with the analytically predicted group delay of the
-fourth-order Butterworth LPF in the message band. The best-fit amplitude
-scale lies within two percent of unity, and the residual RMS error is
-approximately one and a half percent of the peak signal. These results are
-consistent with the hypothesis that the only systematic deviation between
-$m(t)$ and $\hat m(t)$ is the filter group delay.
-
-### B. Frequency Modulation
-
-Fig. 5 shows the FM transmitter and the derivative-based frequency
-demodulator. Fig. 6 displays the message and the modulated signal: the
-characteristic densification of $s_{FM}(t)$ during positive excursions of
-$m(t)$ and its rarefaction during negative excursions is clearly visible,
-in accordance with the FM equation. Fig. 7 compares the matched-LPF
-reference with the demodulated signal, and Fig. 8 superposes all three
-traces.
-
-![FM Simulink model](FMBlock.png)
-
-*Fig. 5. Simulink implementation of the FM transmitter and derivative-based
-frequency demodulator.*
-
-![FM Scope 1](FMmsVSmod.png)
-
-*Fig. 6. Message $m(t)$ (top) and modulated signal $s_{FM}(t)$ (bottom).*
-
-![FM Scope 2](FMmsgVSdmod.png)
-
-*Fig. 7. Matched-LPF reference $\mathrm{LPF}\{m(t)\}$ (top) and recovered
-signal $m_{\mathrm{demod}}(t)$ (bottom).*
-
-![FM combined](FMmsVSmodVSdemod.png)
-
-*Fig. 8. Side-by-side comparison of $m(t)$, $s_{FM}(t)$, and
-$m_{\mathrm{demod}}(t)$.*
-
-The best-fit amplitude scale is $a=1.0001$, and the RMS error between the
-matched reference and the recovered signal is approximately
-$4\,\text{mV}$, equivalent to $0.2$ percent of the peak amplitude. The
-estimated relative delay is zero by construction, since the matched LPF
-applies the same group delay to the reference path. The numerical results
-indicate that the derivative-based demodulator inverts the FM transmitter
-to within solver tolerance, supporting the analytical result of (1).
-
-### C. Comparative Summary
-
-The numerical performance of the two receivers is summarized in Table I.
-
-*Table I. Summary of the recovery performance of the two demodulators
-under the criterion of Section III-C.*
-
-| Task | Best-fit scale $a$ | RMS error | Maximum error | Estimated delay | Outcome |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| AM | $1.0223$ | $0.076\,\text{V}$ | $0.175\,\text{V}$ | $17.0\,\text{ms}$ | PASS |
-| FM | $1.0001$ | $0.004\,\text{V}$ | $0.018\,\text{V}$ | $0.0\,\text{ms}$ (matched reference) | PASS |
-
----
-
-## V. Discussion
+## IV. Discussion
 
 The simulation results support several broader observations regarding the
 implementation of analog modulation systems in Simulink.
@@ -425,7 +335,7 @@ relevant message frequencies, the two are numerically indistinguishable.
 
 ---
 
-## VI. Conclusion
+## V. Conclusion
 
 This work has demonstrated that Performance Tasks 1 and 2 of Experiment 7
 admit a fully analytical solution within the block library prescribed by
